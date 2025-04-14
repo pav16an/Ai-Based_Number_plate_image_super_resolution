@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>License Plate Detection</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .main-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+            cursor: pointer;
+        }
+        .upload-area:hover {
+            border-color: #0d6efd;
+        }
+        .preview-image {
+            max-width: 100%;
+            max-height: 400px;
+            margin: 20px 0;
+        }
+        .result-container {
+            margin-top: 20px;
+        }
+        .plate-card {
+            margin: 10px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .image-container {
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 15px;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .enhanced-plate-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease-in-out;
+        }
+        .enhanced-plate-image:hover {
+            transform: scale(1.02);
+        }
+        .plate-details {
+            padding: 10px 0;
+        }
+        .plate-details h4 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .plate-details p {
+            color: #34495e;
+            margin-bottom: 5px;
+        }
+        .spinner-border {
+            width: 2rem;
+            height: 2rem;
+        }
+        .nav-buttons {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .progress-container {
+            margin: 15px 0;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .progress {
+            height: 20px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <h1 class="text-center mb-4">License Plate Detection</h1>
+        
+        <div class="nav-buttons">
+            <a href="/database" class="btn btn-primary" target="_blank">View Database</a>
+            <a href="/webcam" class="btn btn-success" target="_blank">Open Webcam</a>
+        </div>
+        
+        <div class="upload-area" id="dropZone">
+            <h3>Drag & Drop or Click to Upload</h3>
+            <p>Supported formats: JPG, PNG, MP4, AVI, MOV</p>
+            <input type="file" id="fileInput" accept="image/*,video/*" style="display: none;">
+        </div>
+        
+        <div id="previewContainer" style="display: none;">
+            <h3>Preview</h3>
+            <img id="previewImage" class="preview-image">
+            <div class="progress-container" id="progressContainer" style="display: none;">
+                <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         id="progressBar" 
+                         role="progressbar" 
+                         style="width: 0%" 
+                         aria-valuenow="0" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100">0%</div>
+                </div>
+                <p id="progressText" class="text-center mb-0">Initializing...</p>
+            </div>
+            <div class="text-center">
+                <button class="btn btn-primary" id="processBtn">Process Image</button>
+                <button class="btn btn-danger ms-2" id="stopBtn" style="display: none;">Stop Processing</button>
+            </div>
+        </div>
+        
+        <div class="result-container" id="resultContainer" style="display: none;">
+            <h3>Detection Results</h3>
+            <div id="plateResults">
+                <div class="latest-image-section mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="mb-0">Latest Processed Image</h5>
+                        <button class="btn btn-sm btn-outline-primary refresh-latest" onclick="refreshLatestImage()">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="latest-image-container position-relative">
+                        <div class="spinner-border text-primary position-absolute top-50 start-50 translate-middle" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <img id="latestProcessedImage" class="img-fluid rounded" style="width: 100%; max-height: 400px; object-fit: contain;" 
+                             src="/static/placeholder.jpg" alt="Latest processed image">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const previewContainer = document.getElementById('previewContainer');
+        const previewImage = document.getElementById('previewImage');
+        const processBtn = document.getElementById('processBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resultContainer = document.getElementById('resultContainer');
+        const plateResults = document.getElementById('plateResults');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        
+        let currentController = null;
+
+        // Handle drag and drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#0d6efd';
+        });
+        
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#ccc';
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#ccc';
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+        
+        // Handle click to upload
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+        
+        function handleFile(file) {
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    previewImage.src = e.target.result;
+                    previewContainer.style.display = 'block';
+                    resultContainer.style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            } else if (file.type.startsWith('video/')) {
+                // Handle video file
+                processVideo(file);
+            }
+        }
+        
+        processBtn.addEventListener('click', () => {
+            const file = fileInput.files[0];
+            if (file) {
+                processImage(file);
+            }
+        });
+
+        function updateProgress(percent, message) {
+            progressBar.style.width = `${percent}%`;
+            progressBar.setAttribute('aria-valuenow', percent);
+            progressBar.textContent = `${percent}%`;
+            if (message) {
+                progressText.textContent = message;
+            }
+        }
+
+        // Add stop button functionality
+        stopBtn.addEventListener('click', () => {
+            if (currentController) {
+                currentController.abort();
+                currentController = null;
+                stopBtn.style.display = 'none';
+                processBtn.style.display = 'inline-block';
+                progressContainer.style.display = 'none';
+                plateResults.innerHTML = '<div class="alert alert-warning">Processing cancelled by user</div>';
+                resultContainer.style.display = 'block';
+                
+                // Clear any ongoing updates
+                if (databaseUpdateInterval) {
+                    clearInterval(databaseUpdateInterval);
+                    databaseUpdateInterval = null;
+                }
+            }
+        });
+        
+        function processImage(file) {
+            // Create a new AbortController
+            currentController = new AbortController();
+            const signal = currentController.signal;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // Show stop button and hide process button
+            processBtn.style.display = 'none';
+            stopBtn.style.display = 'inline-block';
+            
+            // Show progress container
+            progressContainer.style.display = 'block';
+            updateProgress(0, 'Starting image processing...');
+            
+            // Show loading state
+            resultContainer.style.display = 'block';
+            plateResults.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-primary mb-2" role="status">
+                        <span class="visually-hidden">Processing...</span>
+                    </div>
+                    <p>Processing image... Please wait</p>
+                </div>
+            `;
+            
+            let processStartTime = Date.now();
+            
+            fetch('/api/process', {
+                method: 'POST',
+                body: formData,
+                signal: signal
+            })
+            .then(response => {
+                const reader = response.body.getReader();
+                let receivedLength = 0;
+                
+                return new ReadableStream({
+                    start(controller) {
+                        function push() {
+                            reader.read().then(({done, value}) => {
+                                if (done) {
+                                    controller.close();
+                                    return;
+                                }
+                                
+                                receivedLength += value.length;
+                                const elapsedTime = (Date.now() - processStartTime) / 1000;
+                                const progress = Math.min(95, Math.floor((elapsedTime / 10) * 100));
+                                updateProgress(progress, `Processing image... ${progress}% complete`);
+                                
+                                controller.enqueue(value);
+                                push();
+                            });
+                        }
+                        push();
+                    }
+                });
+            })
+            .then(stream => new Response(stream))
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                updateProgress(100, 'Processing complete!');
+                displayResults(data.license_plates);
+                startDatabaseUpdates();
+            })
+            .catch(error => {
+                if (error.name === 'AbortError') {
+                    console.log('Processing cancelled by user');
+                } else {
+                    console.error('Error:', error);
+                    plateResults.innerHTML = `
+                        <div class="alert alert-danger">
+                            Error processing image: ${error.message}
+                        </div>
+                    `;
+                }
+            })
+            .finally(() => {
+                // Reset buttons and progress
+                stopBtn.style.display = 'none';
+                processBtn.style.display = 'inline-block';
+                progressContainer.style.display = 'none';
+                currentController = null;
+            });
+        }
+        
+        let databaseUpdateInterval;
+
+        function startDatabaseUpdates() {
+            // Clear any existing interval
+            if (databaseUpdateInterval) {
+                clearInterval(databaseUpdateInterval);
+            }
+
+            // Update database every 20 seconds
+            databaseUpdateInterval = setInterval(() => {
+                fetch('/api/database/update')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            console.error('Database update error:', data.error);
+                            return;
+                        }
+                        console.log('Database updated successfully');
+                    })
+                    .catch(error => {
+                        console.error('Error updating database:', error);
+                    });
+            }, 20000); // 20 seconds
+        }
+        
+        function processVideo(file) {
+            // Create a new AbortController
+            currentController = new AbortController();
+            const signal = currentController.signal;
+            
+            const formData = new FormData();
+            formData.append('video', file);
+            
+            // Show stop button
+            processBtn.style.display = 'none';
+            stopBtn.style.display = 'inline-block';
+            
+            // Show loading state
+            resultContainer.style.display = 'block';
+            plateResults.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-primary mb-2" role="status">
+                        <span class="visually-hidden">Processing...</span>
+                    </div>
+                    <p>Processing video... Please wait</p>
+                </div>
+            `;
+            
+            fetch('/upload_video', {
+                method: 'POST',
+                body: formData,
+                signal: signal
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                displayResults(data.detected_plates);
+            })
+            .catch(error => {
+                if (error.name === 'AbortError') {
+                    console.log('Processing cancelled by user');
+                } else {
+                    console.error('Error:', error);
+                    plateResults.innerHTML = `
+                        <div class="alert alert-danger">
+                            Error processing video: ${error.message}
+                        </div>
+                    `;
+                }
+            })
+            .finally(() => {
+                // Reset buttons
+                stopBtn.style.display = 'none';
+                processBtn.style.display = 'inline-block';
+                currentController = null;
+            });
+        }
+        
+        function displayResults(plates) {
+            resultContainer.style.display = 'block';
+            plateResults.innerHTML = '';
+            
+            if (plates.length === 0) {
+                plateResults.innerHTML = '<div class="alert alert-info">No license plates detected</div>';
+                return;
+            }
+            
+            // Add a section for the latest processed image
+            const latestImageSection = document.createElement('div');
+            latestImageSection.className = 'latest-image-section mb-4';
+            latestImageSection.innerHTML = `
+                <h4 class="mb-3">Latest Processed Image</h4>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="latest-image-container position-relative">
+                            <div class="spinner-border text-primary position-absolute top-50 start-50 translate-middle" id="latestImageSpinner"></div>
+                            <img id="latestProcessedImage" class="img-fluid rounded" style="width: 100%; max-height: 400px; object-fit: contain;" alt="Latest processed image">
+                        </div>
+                        <div class="text-center mt-3">
+                            <p id="latestImageTimestamp" class="text-muted small"></p>
+                            <button class="btn btn-sm btn-outline-primary" id="refreshLatestImage">
+                                <i class="bi bi-arrow-clockwise"></i> Refresh Latest Image
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            plateResults.appendChild(latestImageSection);
+            
+            // Function to load the latest processed image
+            function loadLatestProcessedImage() {
+                const latestImageSpinner = document.getElementById('latestImageSpinner');
+                const latestProcessedImage = document.getElementById('latestProcessedImage');
+                const latestImageTimestamp = document.getElementById('latestImageTimestamp');
+                const refreshLatestImage = document.getElementById('refreshLatestImage');
+                
+                // Show loading spinner
+                latestImageSpinner.style.display = 'block';
+                refreshLatestImage.disabled = true;
+                
+                // Get current timestamp to prevent caching
+                const timestamp = new Date().getTime();
+                
+                // Try to load the latest image from uploads
+                fetch(`/api/latest_image?t=${timestamp}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch latest image');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.image_path) {
+                            latestProcessedImage.src = data.image_path;
+                            latestImageTimestamp.textContent = `Last updated: ${new Date().toLocaleString()}`;
+                            
+                            // Add success handler
+                            latestProcessedImage.onload = function() {
+                                latestImageSpinner.style.display = 'none';
+                                refreshLatestImage.disabled = false;
+                            };
+                            
+                            // Add error handler
+                            latestProcessedImage.onerror = function() {
+                                this.src = '/static/img/error-placeholder.png';
+                                latestImageSpinner.style.display = 'none';
+                                refreshLatestImage.disabled = false;
+                                latestImageTimestamp.textContent = 'Failed to load image';
+                            };
+                        } else {
+                            throw new Error('No image path returned');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading latest image:', error);
+                        latestProcessedImage.src = '/static/img/error-placeholder.png';
+                        latestImageSpinner.style.display = 'none';
+                        refreshLatestImage.disabled = false;
+                        latestImageTimestamp.textContent = 'Failed to load image';
+                    });
+            }
+            
+            // Add event listener to refresh button
+            document.getElementById('refreshLatestImage').addEventListener('click', loadLatestProcessedImage);
+            
+            // Load the latest image initially
+            loadLatestProcessedImage();
+            
+            // Add a separator between latest image and plate results
+            const separator = document.createElement('hr');
+            separator.className = 'my-4';
+            plateResults.appendChild(separator);
+            
+            // Add a heading for detected plates
+            const platesHeading = document.createElement('h4');
+            platesHeading.className = 'mb-3';
+            platesHeading.textContent = 'Detected License Plates';
+            plateResults.appendChild(platesHeading);
+            
+            plates.forEach(plate => {
+                const plateCard = document.createElement('div');
+                plateCard.className = 'plate-card';
+                
+                // Create image containers
+                const imagesContainer = document.createElement('div');
+                imagesContainer.className = 'd-flex gap-3 mb-3';
+                
+                // Original image container
+                const originalImageContainer = document.createElement('div');
+                originalImageContainer.className = 'image-container flex-grow-1';
+                originalImageContainer.style.position = 'relative';
+                
+                // Enhanced image container
+                const enhancedImageContainer = document.createElement('div');
+                enhancedImageContainer.className = 'image-container flex-grow-1';
+                enhancedImageContainer.style.position = 'relative';
+                
+                // Create loading spinners
+                const originalLoadingSpinner = document.createElement('div');
+                originalLoadingSpinner.className = 'spinner-border text-primary';
+                originalLoadingSpinner.style.position = 'absolute';
+                originalLoadingSpinner.style.top = '50%';
+                originalLoadingSpinner.style.left = '50%';
+                originalLoadingSpinner.style.transform = 'translate(-50%, -50%)';
+                
+                const enhancedLoadingSpinner = document.createElement('div');
+                enhancedLoadingSpinner.className = 'spinner-border text-primary';
+                enhancedLoadingSpinner.style.position = 'absolute';
+                enhancedLoadingSpinner.style.top = '50%';
+                enhancedLoadingSpinner.style.left = '50%';
+                enhancedLoadingSpinner.style.transform = 'translate(-50%, -50%)';
+                
+                // Add spinners to containers
+                originalImageContainer.appendChild(originalLoadingSpinner);
+                enhancedImageContainer.appendChild(enhancedLoadingSpinner);
+                
+                // Create image elements
+                const originalImage = document.createElement('img');
+                originalImage.className = 'enhanced-plate-image';
+                originalImage.alt = `Original plate ${plate.number}`;
+                originalImage.style.maxWidth = '100%';
+                originalImage.style.width = '100%';
+                originalImage.style.height = 'auto';
+                originalImage.style.borderRadius = '4px';
+                
+                const enhancedImage = document.createElement('img');
+                enhancedImage.className = 'enhanced-plate-image';
+                enhancedImage.alt = `Enhanced plate ${plate.number}`;
+                enhancedImage.style.maxWidth = '100%';
+                enhancedImage.style.width = '100%';
+                enhancedImage.style.height = 'auto';
+                enhancedImage.style.borderRadius = '4px';
+                
+                // Add error handling for images
+                originalImage.onerror = function() {
+                    this.src = '/static/img/error-placeholder.png';
+                    originalLoadingSpinner.style.display = 'none';
+                };
+                
+                enhancedImage.onerror = function() {
+                    this.src = '/static/img/error-placeholder.png';
+                    enhancedLoadingSpinner.style.display = 'none';
+                };
+                
+                // Add success handling for images
+                originalImage.onload = function() {
+                    originalLoadingSpinner.style.display = 'none';
+                };
+                
+                enhancedImage.onload = function() {
+                    enhancedLoadingSpinner.style.display = 'none';
+                };
+                
+                // Set image sources with timestamp to prevent caching
+                originalImage.src = `/plate_image/${plate.id}?t=${new Date().getTime()}`;
+                enhancedImage.src = `/uploads/enhanced_${plate.id}.jpg?t=${new Date().getTime()}`;
+                
+                // Add images to containers
+                originalImageContainer.appendChild(originalImage);
+                enhancedImageContainer.appendChild(enhancedImage);
+                
+                // Add labels
+                const originalLabel = document.createElement('p');
+                originalLabel.className = 'text-center mb-0 mt-2';
+                originalLabel.textContent = 'Original Image';
+                
+                const enhancedLabel = document.createElement('p');
+                enhancedLabel.className = 'text-center mb-0 mt-2';
+                enhancedLabel.textContent = 'Enhanced Image';
+                
+                originalImageContainer.appendChild(originalLabel);
+                enhancedImageContainer.appendChild(enhancedLabel);
+                
+                // Add containers to images container
+                imagesContainer.appendChild(originalImageContainer);
+                imagesContainer.appendChild(enhancedImageContainer);
+                
+                // Create plate details
+                const plateDetails = document.createElement('div');
+                plateDetails.className = 'plate-details';
+                plateDetails.innerHTML = `
+                    <h4 class="mb-2">License Plate: ${plate.number}</h4>
+                    <p class="mb-1"><strong>Type:</strong> ${plate.type}</p>
+                    <p class="mb-1"><strong>Confidence:</strong> ${(plate.confidence * 100).toFixed(2)}%</p>
+                    <p class="mb-1"><strong>Timestamp:</strong> ${new Date().toLocaleString()}</p>
+                `;
+                
+                // Add images container and details to card
+                plateCard.appendChild(imagesContainer);
+                plateCard.appendChild(plateDetails);
+                
+                // Add refresh button with loading state
+                const refreshContainer = document.createElement('div');
+                refreshContainer.className = 'refresh-controls mt-2 d-flex align-items-center gap-2';
+                
+                const refreshButton = document.createElement('button');
+                refreshButton.className = 'btn btn-sm btn-outline-primary';
+                refreshButton.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh Images';
+                
+                const refreshStatus = document.createElement('span');
+                refreshStatus.className = 'text-muted small';
+                refreshStatus.style.display = 'none';
+                
+                refreshContainer.appendChild(refreshButton);
+                refreshContainer.appendChild(refreshStatus);
+                
+                let isRefreshing = false;
+                let retryCount = 0;
+                const maxRetries = 3;
+                
+                async function refreshImages() {
+                    if (isRefreshing) return;
+                    
+                    isRefreshing = true;
+                    retryCount = 0;
+                    refreshButton.disabled = true;
+                    originalLoadingSpinner.style.display = 'block';
+                    enhancedLoadingSpinner.style.display = 'block';
+                    refreshStatus.style.display = 'inline';
+                    refreshStatus.textContent = 'Refreshing images...';
+                    
+                    const timestamp = new Date().getTime();
+                    
+                    try {
+                        // Function to attempt loading an image with retries
+                        const loadImageWithRetry = async (imageElement, src) => {
+                            return new Promise((resolve, reject) => {
+                                const attemptLoad = () => {
+                                    imageElement.src = `${src}?t=${timestamp}`;
+                                    
+                                    const loadTimeout = setTimeout(() => {
+                                        if (retryCount < maxRetries) {
+                                            retryCount++;
+                                            refreshStatus.textContent = `Retrying... (${retryCount}/${maxRetries})`;
+                                            attemptLoad();
+                                        } else {
+                                            reject(new Error('Image load timeout'));
+                                        }
+                                    }, 5000); // 5 second timeout
+                                    
+                                    imageElement.onload = () => {
+                                        clearTimeout(loadTimeout);
+                                        resolve();
+                                    };
+                                    
+                                    imageElement.onerror = () => {
+                                        clearTimeout(loadTimeout);
+                                        if (retryCount < maxRetries) {
+                                            retryCount++;
+                                            refreshStatus.textContent = `Retrying... (${retryCount}/${maxRetries})`;
+                                            attemptLoad();
+                                        } else {
+                                            reject(new Error('Failed to load image'));
+                                        }
+                                    };
+                                };
+                                
+                                attemptLoad();
+                            });
+                        };
+                        
+                        // Load both images concurrently
+                        await Promise.all([
+                            loadImageWithRetry(originalImage, `/plate_image/${plate.id}`),
+                            loadImageWithRetry(enhancedImage, `/uploads/enhanced_${plate.id}.jpg`)
+                        ]);
+                        
+                        refreshStatus.className = 'text-success small';
+                        refreshStatus.textContent = 'Images refreshed successfully!';
+                        
+                        // Hide success message after 3 seconds
+                        setTimeout(() => {
+                            refreshStatus.style.display = 'none';
+                        }, 3000);
+                        
+                    } catch (error) {
+                        console.error('Error refreshing images:', error);
+                        refreshStatus.className = 'text-danger small';
+                        refreshStatus.textContent = 'Failed to refresh images. Please try again.';
+                        
+                        // Reset images to error placeholder
+                        originalImage.src = '/static/img/error-placeholder.png';
+                        enhancedImage.src = '/static/img/error-placeholder.png';
+                    } finally {
+                        isRefreshing = false;
+                        refreshButton.disabled = false;
+                        originalLoadingSpinner.style.display = 'none';
+                        enhancedLoadingSpinner.style.display = 'none';
+                    }
+                }
+                
+                refreshButton.onclick = refreshImages;
+                plateCard.appendChild(refreshContainer);
+                
+                plateResults.appendChild(plateCard);
+            });
+        }
+
+        function refreshLatestImage() {
+            const latestImageContainer = document.querySelector('.latest-image-container');
+            const latestImage = document.getElementById('latestProcessedImage');
+            const spinner = latestImageContainer.querySelector('.spinner-border');
+            
+            // Show loading state
+            spinner.style.display = 'block';
+            latestImage.style.opacity = '0.5';
+            
+            // Fetch latest image path
+            fetch('/api/latest_image')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.image_path) {
+                        // Add timestamp to prevent caching
+                        const timestamp = new Date().getTime();
+                        latestImage.src = `${data.image_path}?t=${timestamp}`;
+                        
+                        // Handle image load
+                        latestImage.onload = () => {
+                            spinner.style.display = 'none';
+                            latestImage.style.opacity = '1';
+                        };
+                        
+                        // Handle image error
+                        latestImage.onerror = () => {
+                            spinner.style.display = 'none';
+                            latestImage.src = '/static/placeholder.jpg';
+                            latestImage.style.opacity = '1';
+                        };
+                    } else {
+                        throw new Error('No image path received');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading latest image:', error);
+                    spinner.style.display = 'none';
+                    latestImage.src = '/static/placeholder.jpg';
+                    latestImage.style.opacity = '1';
+                });
+        }
+
+        // Load latest image when page loads
+        document.addEventListener('DOMContentLoaded', refreshLatestImage);
+    </script>
+</body>
+</html>

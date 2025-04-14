@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Webcam - License Plate Detection{% endblock %}
+
+{% block content %}
+<div class="webcam-container">
+    <h1>Real-time License Plate Detection</h1>
+    <p class="subtitle">Use your webcam to detect license plates in real-time</p>
+
+    <div class="webcam-wrapper">
+        <div class="video-container">
+            <video id="webcam" autoplay playsinline></video>
+            <canvas id="canvas" style="display: none;"></canvas>
+        </div>
+
+        <div class="controls">
+            <button id="start-webcam" class="btn btn-primary">Start Webcam</button>
+            <button id="stop-webcam" class="btn btn-danger" disabled>Stop Webcam</button>
+            <button id="capture" class="btn btn-success" disabled>Capture Frame</button>
+        </div>
+
+        <div id="results" class="results-container">
+            <div class="loading-spinner" style="display: none;">
+                <div class="spinner"></div>
+                <p>Processing frame...</p>
+            </div>
+            <div class="detection-results"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/webcam.js') }}"></script>
+{% endblock %}

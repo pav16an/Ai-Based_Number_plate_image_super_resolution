@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>License Plate Database</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .plate-card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        .plate-card:hover {
+            transform: translateY(-5px);
+        }
+        .plate-image {
+            max-height: 150px;
+            object-fit: contain;
+            background-color: #f8f9fa;
+        }
+        .stats-card {
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .confidence-high {
+            color: #28a745;
+        }
+        .confidence-medium {
+            color: #ffc107;
+        }
+        .confidence-low {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="mb-4">License Plate Database</h1>
+        
+        {% if error %}
+        <div class="alert alert-danger">
+            Error: {{ error }}
+        </div>
+        {% endif %}
+        
+        <!-- Statistics -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h5>Total Plates</h5>
+                    <h2>{{ total_plates }}</h2>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h5>Unique Plates</h5>
+                    <h2>{{ unique_plates }}</h2>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h5>Plate Types</h5>
+                    <ul class="list-unstyled">
+                        {% for type, count in plate_types %}
+                        <li>{{ type }}: {{ count }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Plates Grid -->
+        <div class="row">
+            {% for plate in plates %}
+            <div class="col-md-4">
+                <div class="card plate-card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">{{ plate[1] }}</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if plate[6] %}
+                        <img src="{{ url_for('get_plate_image', plate_id=plate[0]) }}" class="img-fluid plate-image mb-3" alt="License Plate">
+                        {% else %}
+                        <div class="text-center mb-3">
+                            <p class="text-muted">No image available</p>
+                        </div>
+                        {% endif %}
+                        <p><strong>Type:</strong> {{ plate[2] }}</p>
+                        <p><strong>Confidence:</strong> 
+                            <span class="{% if plate[3] > 0.8 %}confidence-high{% elif plate[3] > 0.6 %}confidence-medium{% else %}confidence-low{% endif %}">
+                                {{ "%.2f"|format(plate[3]) }}
+                            </span>
+                        </p>
+                        <p><strong>Source:</strong> {{ plate[4] }}</p>
+                        <p><strong>Detected:</strong> {{ plate[5] }}</p>
+                        <button class="btn btn-danger btn-sm delete-plate" data-plate-id="{{ plate[0] }}" onclick="deletePlate({{ plate[0] }})">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        {% if not plates %}
+        <div class="alert alert-info">
+            No license plates found in the database.
+        </div>
+        {% endif %}
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://kit.fontawesome.com/a076d05399.js"></script>
+    <script>
+        function deletePlate(plateId) {
+            if (confirm('Are you sure you want to delete this license plate record? This action cannot be undone.')) {
+                fetch(`/api/plates/${plateId}`, {
+                    method: 'DELETE',
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.message) {
+                        // Remove the card from the UI
+                        const card = document.querySelector(`[data-plate-id="${plateId}"]`).closest('.col-md-4');
+                        card.remove();
+                        
+                        // Update statistics
+                        updateStatistics();
+                        
+                        // Show success message
+                        alert('License plate record deleted successfully');
+                    } else {
+                        alert('Error deleting license plate record');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error deleting license plate record');
+                });
+            }
+        }
+        
+        function updateStatistics() {
+            // Reload the page to update statistics
+            window.location.reload();
+        }
+    </script>
+</body>
+</html>
