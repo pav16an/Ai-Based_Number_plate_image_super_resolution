@@ -1,4 +1,4 @@
-# License Plate Extraction with YOLOv10 and PaddleOCR & Save Data to SQL Database
+# License Plate Extraction with YOLOv10 , ESRGANs and EasyOCR & Save Data to SQL Database
 
 ## How to run:
 
